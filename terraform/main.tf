@@ -23,6 +23,28 @@ resource "aws_cognito_user_pool_domain" "user_pool_domain" {
   user_pool_id = aws_cognito_user_pool.user_pool.id
 }
 
+resource "aws_dynamodb_table" "tpiy_vault" {
+  name           = "tpiy-vault-data"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "user_id"
+  range_key      = "entry_id"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "entry_id"
+    type = "S"
+  }
+
+  tags = {
+    Environment = "production"
+    Project     = "tpiy"
+  }
+}
+
 resource "aws_lambda_function" "vault_service" {
   function_name = "tpiy-vault-service"
   role          = var.lambda_exec_role
@@ -32,7 +54,8 @@ resource "aws_lambda_function" "vault_service" {
   source_code_hash = filebase64sha256("../vault_service/deployment.zip")
   environment {
     variables = {
-      REDIS_URL = var.redis_url
+      REDIS_URL      = var.redis_url
+      DYNAMODB_TABLE = aws_dynamodb_table.tpiy_vault.name
     }
   }
 }
@@ -81,13 +104,13 @@ resource "aws_api_gateway_method" "auth_get" {
   rest_api_id   = aws_api_gateway_rest_api.api.id
   resource_id   = aws_api_gateway_resource.auth.id
   http_method   = "GET"
-  authorization = "NONE" # Optionally use "COGNITO_USER_POOLS" here
+  authorization = "NONE"
 }
 
 resource "aws_api_gateway_integration" "auth_get_integration" {
-  rest_api_id = aws_api_gateway_rest_api.api.id
-  resource_id = aws_api_gateway_resource.auth.id
-  http_method = aws_api_gateway_method.auth_get.http_method
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.auth.id
+  http_method             = aws_api_gateway_method.auth_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.auth_service.invoke_arn
